@@ -3,6 +3,7 @@ ini_set('memory_limit', '-1');
 ini_set('display_errors', 0);
 set_time_limit(0);
 error_reporting(0);
+session_start();
 
 function marime_fisier($bytes)
 {
@@ -43,6 +44,59 @@ function marime_fisier($bytes)
 		return $result!=0 ? $result : "0 B";
 }
 
+function permisiuni($file){
+	$perms = fileperms($file);
+
+	switch ($perms & 0xF000) {
+		case 0xC000: // socket
+			$info = 's';
+			break;
+		case 0xA000: // symbolic link
+			$info = 'l';
+			break;
+		case 0x8000: // regular
+			$info = '-';
+			break;
+		case 0x6000: // block special
+			$info = 'b';
+			break;
+		case 0x4000: // directory
+			$info = 'd';
+			break;
+		case 0x2000: // character special
+			$info = 'c';
+			break;
+		case 0x1000: // FIFO pipe
+			$info = 'p';
+			break;
+		default: // unknown
+			$info = 'u';
+	}
+
+	// Owner
+	$info .= (($perms & 0x0100) ? 'r' : '-');
+	$info .= (($perms & 0x0080) ? 'w' : '-');
+	$info .= (($perms & 0x0040) ?
+				(($perms & 0x0800) ? 's' : 'x' ) :
+				(($perms & 0x0800) ? 'S' : '-'));
+
+	// Group
+	$info .= (($perms & 0x0020) ? 'r' : '-');
+	$info .= (($perms & 0x0010) ? 'w' : '-');
+	$info .= (($perms & 0x0008) ?
+				(($perms & 0x0400) ? 's' : 'x' ) :
+				(($perms & 0x0400) ? 'S' : '-'));
+
+	// World
+	$info .= (($perms & 0x0004) ? 'r' : '-');
+	$info .= (($perms & 0x0002) ? 'w' : '-');
+	$info .= (($perms & 0x0001) ?
+				(($perms & 0x0200) ? 't' : 'x' ) :
+				(($perms & 0x0200) ? 'T' : '-'));
+	echo $info;
+	
+}
+
 function download($file, $delete){
 	header('Content-Description: File Transfer');
 	header('Content-Type: application/octet-stream');
@@ -58,6 +112,11 @@ function download($file, $delete){
 		unlink($file);
 	
 	exit();
+}
+
+function php_info(){
+	if($_GET['actiune'] == 'phpinfo')
+		phpinfo();
 }
 
 function creare_director(){
@@ -191,9 +250,7 @@ function modificare(){
 				</form>
 			</div>
 		';
-	}
-			
-	
+	}	
 }
 
 function stergere(){
@@ -378,233 +435,249 @@ if(isset($_GET['actiune']) && $_GET['actiune'] == 'descarcare' && isset($_GET['n
 		<?php
 		//Verificam daca link-ul este corect
 		if(isset($_GET['actiune']) && !empty($_GET['actiune'])){
-			$director = (isset($_GET['director']) ? $_GET['director'] : ".");
+			$director_actual = (isset($_GET['director']) ? $_GET['director'] : ".");
 			
 			//Daca parametrul 'director' este gol afisam eroare
-			if(empty($director))
-				die('Nu exista un director');
+			if(empty($director_actual))
+				die('Nu s-a setat parametrul \'director\' din URL.');
 			
+			//Verificam daca directorul respectiv exista
+			if(!is_dir($director_actual))
+				die("Directorul accesat nu exista!");
+			
+			//Listam fisierele din directorul respectiv
 			if($_GET['actiune'] == 'listare'){
+				//Verificam daca s-a setat (schimbat) directorul
+				if(isset($_GET['director'])){
+					chdir(getcwd().'/'.urldecode($_GET['director']));
+					
+					$_SESSION['locatie_actuala'] = getcwd();
+				} else 
+					$_SESSION['locatie_actuala'] = getcwd();
 		?>
 			
-			<div class="row" style="padding-top: 1%; padding-bottom: 2%; text-align: right;">
-				<div class="col-md-8">
+			<div class="row" style="padding-top: 1%; padding-bottom: 2%;">
+				<div class="col-md-2">
+					<button class="btn btn-success" data-toggle="modal" data-target="#info">Info server</button>
+				</div>
+				<div class="col-md-7">
 					<pre>
-					In lucru locatie actuala
+					<?php echo getcwd(); ?>
 					</pre>
 				</div>
-				<div class="col-md-4">
+				<div class="col-md-3">
 					<button class="btn btn-success" data-toggle="modal" data-target="#Folder">Folder nou</button>
-					
-					<div class="modal fade" id="Folder">
-						<div class="modal-dialog">
-							<div class="modal-content">
-								<!-- Modal Header -->
-								<div class="modal-header">
-								  <h4 class="modal-title">Creare director</h4>
-								  <button type="button" class="close" data-dismiss="modal">&times;</button>
-								</div>
-								
-								<!-- Modal body -->
-								<form action="?actiune=creare_dir&director=<?php echo urlencode($director); ?>&locatie=<?php echo urlencode($_SERVER['REQUEST_URI']); ?>" method="POST">
-									<div class="modal-body">
-										<input type="text" name="denumire" class="form-control" placeholder="Denumire" />
-									</div>
-									
-									<!-- Modal footer -->
-									<div class="modal-footer">
-									  <button type="button" class="btn btn-danger" data-dismiss="modal">Iesire</button>
-									  <button type="submit" name="crdir" class="btn btn-success">Creare</button>
-									</div>
-								</form>
-							</div>
-						</div>
-					</div>
-					
-					<button class="btn btn-info" data-toggle="modal" data-target="#fisier">Fisier nou</button>
-					
-					<div class="modal fade" id="fisier">
-						<div class="modal-dialog">
-							<div class="modal-content">
-								<!-- Modal Header -->
-								<div class="modal-header">
-								  <h4 class="modal-title">Creare fisier</h4>
-								  <button type="button" class="close" data-dismiss="modal">&times;</button>
-								</div>
-								
-								<!-- Modal body -->
-								<form action="?actiune=creare_fis&director=<?php echo urlencode($director); ?>&locatie=<?php echo urlencode($_SERVER['REQUEST_URI']); ?>" method="POST">
-									<div class="modal-body">
-										<div class="form-group">
-											<input type="text" name="denumire" class="form-control" placeholder="Denumire" />
-										</div>
-										<div class="form-group">
-											<input type="text" name="extensie" class="form-control" placeholder="Extensie (implicit .txt)" />
-										</div>
-									</div>
-									
-									<!-- Modal footer -->
-									<div class="modal-footer">
-									  <button type="button" class="btn btn-danger" data-dismiss="modal">Iesire</button>
-									  <button type="submit" name="crdir" class="btn btn-success">Creare</button>
-									</div>
-								</form>
-							</div>
-						</div>
-					</div>					
+					<button class="btn btn-info" data-toggle="modal" data-target="#fisier">Fisier nou</button>				
 				</div>
 			</div>
 			<table class="table table-hover">
-					<tr>
-						<th>
-							<a href="http://
-							<?php 
-							echo $_SERVER['SERVER_NAME'] . $_SERVER['REQUEST_URI'];
-							
-							if($director == '.'){
-								echo '&director=';
-								echo urlencode('./../');
-							} else
-								echo urlencode('/..');
-							?>"><i class="fa fa-arrow-left"></i> Inapoi</a>
-						</th>	
-						<th>Dimensiune</th>	
-						<th>*</th>	
-					</tr>
-					<?php
-					//Verificam daca fisierul este un director
-					if(is_dir($director)){
+				<tr>
+					<th>
+						<a href="http://
+						<?php 
+						echo $_SERVER['SERVER_NAME'] . $_SERVER['REQUEST_URI'];
 						
-						//Preluam fisierele fara "." si ".."
-						$fisiere = array_diff(scandir($director), array('.', ".."));
-
-						//Schimbam directorul
-						if(isset($_GET['director']))
-							chdir(getcwd().'/'.urldecode($_GET['director']));
-							
-						//Aranjam directoarele primele
-						usort($fisiere, function($a, $b) {	
-							if(is_dir($a) == is_dir($b))
-								return strnatcasecmp($a, $b);
-							else
-								return is_dir($a) ? -1 : 1;
-						});
-						
-						//Afisam fisierele/directoarele
-						$i=1; // Indice pentru fisiere
-						$j=0; // Indice pentru directoare
-						foreach($fisiere as $denumire){
-							//Preluam locatia fisierului/folderului
-							$locatie = getcwd().'/'.$denumire;
-							$_SESSION['locatie'] = $locatie;
-					?>
-					<tr>
-						<th>
-							<?php
-								if(is_dir($locatie))
-									echo '<i class="fa fa-folder fa-fw"></i> <a href="?actiune=listare&director='. urlencode("{$director}/{$denumire}") . '">'. $denumire .'</a>';
-								else if(is_file($locatie))
-									echo '<i class="fa fa-code fa-fw"></i> '.$denumire;
-								else
-									echo 'eroare #1';
-							?>
-						</th>
-						
-						<th>
-							<?php 
-							echo is_file($locatie) ? marime_fisier(filesize($denumire)) : '-';
-							?>
-						</th>
-						
-						<?php if(is_file($locatie)){ ?>
-						<td>
-							<div class="row">
-								<?php
-								//Verificam daca fisierul este o arhiva
-								$info = pathinfo($locatie);
-								if (isset($info['extension']) && $info["extension"] == "zip"){							
-								?>
-									&nbsp
-									<a href="<?php echo str_replace("\\",'/',"http://".$_SERVER['HTTP_HOST'].substr(getcwd(),strlen($_SERVER['DOCUMENT_ROOT']))).'/'.$denumire; ?>"><button class="btn btn-success"><i class="fa fa-download"></i></button></a>
-								<?php } else { ?>
-									
-									<a href="?actiune=vizualizare&nume=<?php echo $denumire; ?>&director=<?php echo urlencode($director); ?>"><button class="btn btn-info"><i class="fa fa-eye"></i></button></a>
-									
-									&nbsp
-									<a href="?actiune=modificare&nume=<?php echo $denumire; ?>&director=<?php echo urlencode($director); ?>&locatie=<?php echo urlencode($_SERVER['REQUEST_URI']); ?>"><button class="btn btn-primary"><i class="fa fa-edit"></i></button></a>
-									
-									&nbsp
-									<a href="?actiune=descarcare&nume=<?php echo $denumire; ?>&director=<?php echo urlencode($director); ?>"><button class="btn btn-success"><i class="fa fa-download"></i></button></a>
-								<?php } ?>
-								
-								<!-- Stergere fisier -->
-								&nbsp
-								<button class="btn btn-danger" data-toggle="modal" data-target="#sterge<?php echo $i; ?>"><i class="fa fa-trash"></i></button>
-							
-								<div class="modal fade" id="sterge<?php echo $i; ?>">
-									<div class="modal-dialog" role="document">
-										<div class="modal-content">
-											<div class="modal-header">
-												<h5 class="modal-title" id="exampleModalLabel">Stergere fisier</h5>
-												<button type="button" class="close" data-dismiss="modal" aria-label="Close">
-													<span aria-hidden="true">&times;</span>
-												</button>
-											</div>
-											<div class="modal-body">
-												Sunteti sigur ca vreti sa stergeti fisierul <b><i><?php echo $denumire; ?></i></b> ?
-											</div>
-											<div class="modal-footer">
-												<button type="button" class="btn btn-secondary" data-dismiss="modal">Inchide</button>
-												<a href="?actiune=sterge&nume=<?php echo urlencode($denumire); ?>&director=<?php echo urlencode($director); ?>&locatie=<?php echo urlencode($_SERVER['REQUEST_URI']); ?>"><button type="button" class="btn btn-danger">Sterge</button></a>
-											</div>
-										</div>
-									</div>
-								</div>
-								<!-- Sfarsit stergere fisier -->
-							</div>
-						</td>
-						<?php $i++; } else if(is_dir($locatie)){?>
-						<td>
-							<div class="row">
-								
-								<a href="?actiune=arhivare&nume=<?php echo $denumire; ?>&director=<?php echo urlencode($director); ?>&locatie=<?php echo urlencode($_SERVER['REQUEST_URI']); ?>"><button class="btn btn-primary"><i class="fa fa-file-archive"></i></button></a>
-								
-								<!-- Stergere director -->
-								&nbsp
-								<button class="btn btn-danger" data-toggle="modal" data-target="#sterge<?php echo $j; ?>"><i class="fa fa-trash"></i></button>
-								<div class="modal fade" id="sterge<?php echo $j; ?>" tabindex="-1" role="dialog" aria-labelledby="exampleModalLabel" aria-hidden="true">
-									<div class="modal-dialog" role="document">
-										<div class="modal-content">
-											<div class="modal-header">
-												<h5 class="modal-title" id="exampleModalLabel">Stergere director</h5>
-												<button type="button" class="close" data-dismiss="modal" aria-label="Close">
-													<span aria-hidden="true">&times;</span>
-												</button>
-											</div>
-											<div class="modal-body">
-												Sunteti sigur ca vreti sa stergeti directorul <b><i><?php echo $denumire; ?></i></b> ?
-											</div>
-											<div class="modal-footer">
-												<button type="button" class="btn btn-secondary" data-dismiss="modal">Inchide</button>
-												<a href="?actiune=sterge&nume=<?php echo urlencode($denumire); ?>&director=<?php echo urlencode($director); ?>&locatie=<?php echo urlencode($_SERVER['REQUEST_URI']); ?>"><button type="button" class="btn btn-danger">Sterge</button></a>
-											</div>
-										</div>
-									</div>
-								</div>
-								<!-- Sfarsit stergere director-->
-							</div>
-						</td>
-						<?php $j--; } else echo '<td>err act</td>';?>
-					</tr>		
+						if($director_actual == '.'){
+							echo '&director='.urlencode('./../');
+						} else
+							echo urlencode('/..');
+						?>"><i class="fa fa-arrow-left"></i> Inapoi</a>
+					</th>	
+					<th>Dimensiune</th>	
+					<th>Permisiuni</th>	
+					<th>Actiune</th>	
+				</tr>
 				<?php
-						} // sfarsit foreach
-					} // sfarsit verificare fisier -> director
+				//Preluam fisierele fara "." si ".."
+				$fisiere = array_diff(scandir($_SESSION['locatie_actuala']), array('.', ".."));
+
+				//Aranjam directoarele primele
+				usort($fisiere, function($a, $b) {	
+					if(is_dir($a) == is_dir($b))
+						return strnatcasecmp($a, $b);
+					else
+						return is_dir($a) ? -1 : 1;
+				});
+					
+				//Afisam fisierele/directoarele
+				foreach($fisiere as $denumire){
+					// Preluam locatia fisierului/folderului
+					$locatie = getcwd().'/'.$denumire;
 				?>
+				<tr>
+					<td>
+						<?php
+							if(is_dir($locatie)) //Verificam daca este director
+								echo '<i class="fa fa-folder fa-fw"></i> <a href="?actiune=listare&director='. urlencode("{$director_actual}/{$denumire}") . '">'. $denumire .'</a>';
+							else if(is_file($locatie)) //Daca nu este director verificam daca este fisier
+								echo '<i class="fa fa-code fa-fw"></i> '.$denumire;
+							else //Daca nu este fisier/director afisam eroare
+								echo 'Undefined type';
+						?>
+					</td>
+					
+					<td>
+						<?php 
+						echo is_file($locatie) ? marime_fisier(filesize($denumire)) : '-';
+						?>
+					</td>
+					
+					<td>
+						<?php 
+						echo permisiuni($locatie);
+						?>
+					</td>
+					
+					<?php if(is_file($locatie)){ ?>
+					<td>
+						<div class="row">
+							<?php
+							//Verificam daca fisierul este o arhiva
+							$info = pathinfo($locatie);
+							if (isset($info['extension']) && $info["extension"] == "zip"){							
+							?>
+								&nbsp
+								<a href="?actiune=descarcare&nume=<?php echo $denumire; ?>&director=<?php echo urlencode($director_actual); ?>"><button class="btn btn-success"><i class="fa fa-download"></i></button></a>
+							<?php } else { ?>
+								<a href="?actiune=vizualizare&nume=<?php echo $denumire; ?>&director=<?php echo urlencode($director_actual); ?>"><button class="btn btn-info"><i class="fa fa-eye"></i></button></a>
+								&nbsp
+								<a href="?actiune=modificare&nume=<?php echo $denumire; ?>&director=<?php echo urlencode($director_actual); ?>&locatie=<?php echo urlencode($_SERVER['REQUEST_URI']); ?>"><button class="btn btn-primary"><i class="fa fa-edit"></i></button></a>
+								&nbsp
+								<a href="?actiune=descarcare&nume=<?php echo $denumire; ?>&director=<?php echo urlencode($director_actual); ?>"><button class="btn btn-success"><i class="fa fa-download"></i></button></a>
+							<?php } ?>
+							&nbsp
+							<button class="btn btn-danger" data-toggle="modal" data-target="#sterge" onclick="sterge('Stergere fisier', 'Sunteti sigur ca vreti sa stergeti fisierul ', '<b><i><?php echo $denumire; ?></b></i> ?', '?actiune=sterge&nume=<?php echo urlencode($denumire); ?>&director=<?php echo urlencode($director_actual); ?>&locatie=<?php echo urlencode($_SERVER['REQUEST_URI']); ?>')"><i class="fa fa-trash"></i></button>
+						</div>
+					</td>
+					<?php } else if(is_dir($locatie)){ ?>
+					<td>
+						<div class="row">
+							<a href="?actiune=arhivare&nume=<?php echo $denumire; ?>&director=<?php echo urlencode($director_actual); ?>&locatie=<?php echo urlencode($_SERVER['REQUEST_URI']); ?>"><button class="btn btn-primary"><i class="fa fa-file-archive"></i></button></a>
+							&nbsp
+							<button class="btn btn-danger" data-toggle="modal" data-target="#sterge" onclick="sterge('Stergere director', 'Sunteti sigur ca vreti sa stergeti directorul ', '<b><i><?php echo $denumire; ?></b></i> ?', '?actiune=sterge&nume=<?php echo urlencode($denumire); ?>&director=<?php echo urlencode($director_actual); ?>&locatie=<?php echo urlencode($_SERVER['REQUEST_URI']); ?>')"><i class="fa fa-trash"></i></button>
+						</div>
+					</td>
+					<?php } else echo '<td>err act</td>';?>
+				</tr>
+				<?php } // sfarsit foreach ?>
 			</table>
+			
+			<!-- Modal info server -->
+			<div class="modal fade" id="info">
+				<div class="modal-dialog modal-lg">
+					<div class="modal-content">
+						<!-- Modal Header -->
+						<div class="modal-header">
+							<h4 class="modal-title">Informatii server</h4>
+							<button type="button" class="close" data-dismiss="modal">&times;</button>
+						</div>
+						<!-- Modal body -->
+						<div class="modal-body">
+							<pre><?php print_r($_SERVER); ?></pre>
+						</div>
+						<!-- Modal footer -->
+						<div class="modal-footer">
+							<button type="button" class="btn btn-danger" data-dismiss="modal">Iesire</button>
+						</div>
+					</div>
+				</div>
+			</div>
+			<!-- Sfarsit modal info server -->
+			
+			<!-- Modal creare director -->
+			<div class="modal fade" id="Folder">
+				<div class="modal-dialog">
+					<div class="modal-content">
+						<!-- Modal Header -->
+						<div class="modal-header">
+							<h4 class="modal-title">Creare director</h4>
+							<button type="button" class="close" data-dismiss="modal">&times;</button>
+						</div>
+						<!-- Modal body -->
+						<form action="?actiune=creare_dir&director=<?php echo urlencode($director_actual); ?>&locatie=<?php echo urlencode($_SERVER['REQUEST_URI']); ?>" method="POST">
+							<div class="modal-body">
+								<input type="text" name="denumire" class="form-control" placeholder="Denumire" />
+							</div>
+							<!-- Modal footer -->
+							<div class="modal-footer">
+								<button type="button" class="btn btn-danger" data-dismiss="modal">Iesire</button>
+								<button type="submit" name="crdir" class="btn btn-success">Creare</button>
+							</div>
+						</form>
+					</div>
+				</div>
+			</div>
+			<!-- Sfarsit modal creare director -->
+			
+			<!-- Modal creare fisier -->
+			<div class="modal fade" id="fisier">
+				<div class="modal-dialog">
+					<div class="modal-content">
+						<!-- Modal Header -->
+						<div class="modal-header">
+							<h4 class="modal-title">Creare fisier</h4>
+							<button type="button" class="close" data-dismiss="modal">&times;</button>
+						</div>
+						<!-- Modal body -->
+						<form action="?actiune=creare_fis&director=<?php echo urlencode($director_actual); ?>&locatie=<?php echo urlencode($_SERVER['REQUEST_URI']); ?>" method="POST">
+							<div class="modal-body">
+								<div class="form-group">
+									<input type="text" name="denumire" class="form-control" placeholder="Denumire" />
+								</div>
+								<div class="form-group">
+									<input type="text" name="extensie" class="form-control" placeholder="Extensie (implicit .txt)" />
+								</div>
+							</div>
+							<!-- Modal footer -->
+							<div class="modal-footer">
+								<button type="button" class="btn btn-danger" data-dismiss="modal">Iesire</button>
+								<button type="submit" name="crdir" class="btn btn-success">Creare</button>
+							</div>
+						</form>
+					</div>
+				</div>
+			</div>
+			<!-- Sfarsit modal creare fisier -->
+			
+			<!-- Modal stergere fisier/director -->
+			<div class="modal fade" id="sterge">
+				<div class="modal-dialog" role="document">
+					<div class="modal-content">
+						<div class="modal-header">
+							<h5 class="modal-title" id="titlu-modal"></h5>
+							<button type="button" class="close" data-dismiss="modal" aria-label="Close">
+							<span aria-hidden="true">&times;</span>
+							</button>
+						</div>
+						<div class="modal-body"id="descriere-modal">
+							
+						</div>
+						<div class="modal-footer">
+							<button type="button" class="btn btn-secondary" data-dismiss="modal">Inchide</button>
+							<a href="" id="locatie-modal"><button type="button" class="btn btn-danger">Sterge</button></a>
+						</div>
+					</div>
+				</div>
+			</div>
+			<!-- Sfarsit modal stergere fisier/director -->
+			
+			<script>
+			function sterge(titlu, intrebare, fisier, locatie)
+			{
+				$("#titlu-modal").text(titlu);
+				$("#descriere-modal").text(intrebare);
+				$("#descriere-modal").append(fisier);
+				$("#locatie-modal").attr("href", locatie);	
+			}
+			</script>
+			
+		<!-- ########################################### BAZA DE DATE ########################################### -->
 			
 		<?php
 			} // sfarsit verificare actiune==listare
 			
+			//Apelam functiile
+			php_info();
 			creare_director();
 			creare_fisier();
 			arhivare();
@@ -963,6 +1036,7 @@ if(isset($_GET['actiune']) && $_GET['actiune'] == 'descarcare' && isset($_GET['n
 			
 
 		} else {
+			session_destroy();
 			echo 'Nu se afiseaza nimic';
 		}
 		?>
